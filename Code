@@ -1,0 +1,114 @@
+# ToonLight-Shader-with-Shadows-
+Shader "Custom/ToonLighting"
+{
+	Properties // Create the properties that shows on the inspector
+	{
+		_Color ("Color", Color) = (1,1,1,1)
+		_MainTex ("Texture", 2D) = "white" {}
+		_Threshold("Cel threshold", Range(1., 20.)) = 5.
+		_Ambient("Ambient intensity", Range(0., 0.5)) = 0.1
+	}
+	SubShader
+		{
+			Tags { "Queue" = "Overlay" "RenderType" = "Opaque" "LightMode" = "ForwardBase"} // allows forward rendering for ambient and directional lighting
+			LOD 100
+
+			Pass
+			{
+				ZWrite Off //turn off depth buffer
+
+				CGPROGRAM
+				#pragma vertex vert  //compile function name of vertex and fragment shaders
+				#pragma fragment frag
+
+				#include "UnityCG.cginc"
+
+				struct appdata //declare position, texture coords and normal in the appdata struct
+				{
+					float4 vertex : POSITION;
+					float2 uv : TEXCOORD0;
+					float3 normal : NORMAL;
+				};
+
+				struct v2f
+				{
+					float2 uv : TEXCOORD0;
+					float4 vertex : SV_POSITION;
+					float3 normal : NORMAL;
+				};
+
+				float _Threshold;
+
+				float ToonLight(float3 normal, float3 lightDir) //create a function that takes in the value of the normal and the light direction
+				{
+					float NdotL = max(0.0, dot(normalize(normal), normalize(lightDir))); //use the NdotL product to calculate the angle between the normal and the light direction, clamp it between 0-1
+					return floor(NdotL * _Threshold) / (_Threshold - .5);
+				}
+
+				sampler2D _MainTex;
+				float4 _MainTex_ST;
+				fixed4 _Color;
+
+				v2f vert(appdata v)
+				{
+					v2f o;
+					o.vertex = UnityObjectToClipPos(v.vertex); // convert the vertex position into world space
+					o.uv = TRANSFORM_TEX(v.uv, _MainTex);
+					o.normal = mul(v.normal.xyz, (float3x3) unity_WorldToObject);
+					return o;
+				}
+
+				fixed4 _LightColor0;
+				half _Ambient;
+
+				fixed4 frag(v2f i) : SV_Target
+				{
+					fixed4 col = tex2D(_MainTex,i.uv); save the texture and the texture coordinates in the variable col
+					col.rgb *= saturate(ToonLight(i.normal, _WorldSpaceLightPos0.xyz) + _Ambient) * _LightColor0.rgb; //calculate the saturation of texture depending on the angle of light from the ToonLight function
+					return col; //return the color
+				}
+				ENDCG
+			}
+		}
+	SubShader
+	{
+		tags {"RenderType" = "ForwardBase"}
+		Pass
+		{
+			CGPROGRAM
+			#pragma vertex vert
+			#pragma fragment frag
+			#include "UnityCG.cginc"
+			#include "AutoLight.cginc"
+
+
+			struct v2f
+			{
+				float4 pos : SV_POSITION;
+				LIGHTING_COORDS(0,1)
+			};
+
+			v2f vert(appdata_base v)
+			{
+				v2f o;
+				o.pos = UnityObjectToClipPos(v.vertex);
+				TRANSFER_VERTEX_TO_FRAGMENT(o);
+				return o;
+			}
+
+			fixed4 _Color;
+			fixed4 _LightColor0;
+
+			fixed4 frag(v2f i) : Color
+			{
+				float attenuation = LIGHT_ATTENUATION(i);
+				return _Color * attenuation * _LightColor0;
+			}
+
+			ENDCG
+		}
+	}
+	
+
+		Fallback "VertexLit"
+}
